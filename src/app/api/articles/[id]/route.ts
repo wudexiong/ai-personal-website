@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
-import { articleService } from '@/services/articleService';
+import { NextRequest, NextResponse } from 'next/server';
+import { ArticleService } from '@/services/articleService';
 import { UpdateArticleInput } from '@/types/article';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 interface RouteParams {
   params: {
@@ -8,18 +9,21 @@ interface RouteParams {
   };
 }
 
-// 验证更新文章的输入
+/**
+ * 验证更新文章的输入
+ */
 function validateUpdateArticleInput(input: any): input is UpdateArticleInput {
-  if (typeof input !== 'object') return false;
+  if (!input || typeof input !== 'object') return false;
   
   const allowedFields = [
     'title',
     'content',
-    'summary',
-    'tags',
-    'category',
-    'status',
-    'author'
+    'excerpt',
+    'coverImage',
+    'categoryId',
+    'tagIds',
+    'published',
+    'slug'
   ];
 
   // 检查是否包含未知字段
@@ -31,77 +35,131 @@ function validateUpdateArticleInput(input: any): input is UpdateArticleInput {
   // 验证每个字段的类型
   if ('title' in input && typeof input.title !== 'string') return false;
   if ('content' in input && typeof input.content !== 'string') return false;
-  if ('summary' in input && typeof input.summary !== 'string') return false;
-  if ('tags' in input && !Array.isArray(input.tags)) return false;
-  if ('category' in input && typeof input.category !== 'string') return false;
-  if ('status' in input && !['draft', 'published'].includes(input.status)) return false;
-  if ('author' in input && (
-    typeof input.author !== 'object' ||
-    typeof input.author.id !== 'string' ||
-    typeof input.author.name !== 'string'
-  )) return false;
+  if ('excerpt' in input && typeof input.excerpt !== 'string') return false;
+  if ('coverImage' in input && typeof input.coverImage !== 'string') return false;
+  if ('categoryId' in input && typeof input.categoryId !== 'string') return false;
+  if ('tagIds' in input && !Array.isArray(input.tagIds)) return false;
+  if ('published' in input && typeof input.published !== 'boolean') return false;
+  if ('slug' in input && typeof input.slug !== 'string') return false;
 
   return true;
 }
 
-export async function GET(request: Request, { params }: RouteParams) {
-  try {
-    const article = await articleService.getArticle(params.id);
-    if (!article) {
-      return NextResponse.json(
-        { error: 'Article not found' },
-        { status: 404 }
-      );
-    }
-    return NextResponse.json(article);
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to fetch article' },
-      { status: 500 }
-    );
-  }
+/**
+ * 验证文章ID格式
+ * @param id - 文章ID
+ * @returns 如果ID格式有效则返回true,否则返回false
+ */
+function validateArticleId(id: string): boolean {
+  return typeof id === 'string' && /^[a-zA-Z0-9]+$/.test(id)
 }
 
-export async function PUT(request: Request, { params }: RouteParams) {
-  try {
-    const body = await request.json();
-    if (!validateUpdateArticleInput(body)) {
-      return NextResponse.json(
-        { error: 'Failed to update article' },
-        { status: 400 }
-      );
-    }
-
-    const article = await articleService.updateArticle(params.id, body);
-    if (!article) {
-      return NextResponse.json(
-        { error: 'Article not found' },
-        { status: 404 }
-      );
-    }
-    return NextResponse.json(article);
-  } catch (error) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params
+  
+  if (!validateArticleId(id)) {
     return NextResponse.json(
-      { error: 'Failed to update article' },
+      { error: '文章ID格式无效' },
       { status: 400 }
-    );
+    )
+  }
+
+  try {
+    const article = await ArticleService.getArticle({ id })
+    if (!article) {
+      return NextResponse.json(
+        { error: '文章不存在' },
+        { status: 404 }
+      )
+    }
+    return NextResponse.json(article)
+  } catch (error) {
+    console.error('获取文章失败:', error)
+    return NextResponse.json(
+      { error: '获取文章失败' },
+      { status: 500 }
+    )
   }
 }
 
-export async function DELETE(request: Request, { params }: RouteParams) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params
+
+  if (!validateArticleId(id)) {
+    return NextResponse.json(
+      { error: '文章ID格式无效' },
+      { status: 400 }
+    )
+  }
+
+  let body
   try {
-    const success = await articleService.deleteArticle(params.id);
-    if (!success) {
-      return NextResponse.json(
-        { error: 'Article not found' },
-        { status: 404 }
-      );
-    }
-    return new NextResponse(null, { status: 204 });
+    body = await request.json()
   } catch (error) {
     return NextResponse.json(
-      { error: 'Failed to delete article' },
+      { error: '请求体格式无效' },
+      { status: 400 }
+    )
+  }
+
+  if (!validateUpdateArticleInput(body)) {
+    return NextResponse.json(
+      { error: '更新数据格式无效' },
+      { status: 400 }
+    )
+  }
+
+  try {
+    const article = await ArticleService.updateArticle(id, body)
+    if (!article) {
+      return NextResponse.json(
+        { error: '文章不存在' },
+        { status: 404 }
+      )
+    }
+    return NextResponse.json(article)
+  } catch (error) {
+    console.error('更新文章失败:', error)
+    return NextResponse.json(
+      { error: '更新文章失败' },
       { status: 500 }
-    );
+    )
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params
+
+  if (!validateArticleId(id)) {
+    return NextResponse.json(
+      { error: '文章ID格式无效' },
+      { status: 400 }
+    )
+  }
+
+  try {
+    const article = await ArticleService.deleteArticle(id)
+    if (!article) {
+      return NextResponse.json(
+        { error: '文章不存在' },
+        { status: 404 }
+      )
+    }
+    return new NextResponse(null, { status: 204 })
+  } catch (error) {
+    console.error('删除文章失败:', error)
+    return NextResponse.json(
+      { error: '删除文章失败' },
+      { status: 500 }
+    )
   }
 } 

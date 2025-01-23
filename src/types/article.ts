@@ -1,18 +1,38 @@
+/**
+ * 文章接口定义
+ */
 export interface Article {
   id: string;
   title: string;
   content: string;
-  summary?: string;
-  tags?: string[];
-  category?: string;
+  authorId: string;
+  slug: string;
+  excerpt?: string;
+  coverImage?: string;
+  categoryId?: string;
+  tagIds?: string[];
+  published?: boolean;
   createdAt: Date;
   updatedAt: Date;
-  status: 'draft' | 'published';
-  author: {
-    id: string;
-    name: string;
-  };
+  viewCount: number;
 }
 
-export type CreateArticleInput = Omit<Article, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateArticleInput = Partial<Omit<Article, 'id' | 'createdAt' | 'updatedAt'>>; 
+/**
+ * 创建文章的输入类型
+ */
+export interface CreateArticleInput {
+  title: string;
+  content: string;
+  authorId: string;
+  slug: string;
+  excerpt?: string;
+  coverImage?: string;
+  categoryId?: string;
+  tagIds?: string[];
+  published?: boolean;
+}
+
+/**
+ * 更新文章的输入类型
+ */
+export type UpdateArticleInput = Partial<Omit<CreateArticleInput, 'authorId'>>; 

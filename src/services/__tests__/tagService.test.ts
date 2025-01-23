@@ -1,154 +1,364 @@
-import { tagService } from '../tagService';
-import { CreateTagDTO, UpdateTagDTO } from '@/types/tag';
+/**
+ * 标签服务单元测试
+ * @jest-environment node
+ */
+
+import { TagService } from '../tagService'
+import { prisma } from '@/lib/prisma'
+
+// Mock Prisma
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    tag: {
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      count: jest.fn(),
+    },
+    tagsOnArticles: {
+      findMany: jest.fn(),
+    },
+  },
+}))
 
 describe('TagService', () => {
+  const mockPrisma = prisma as jest.Mocked<typeof prisma>
+
   beforeEach(() => {
-    // 清空所有测试数据
-    const tags = (tagService as any).tags;
-    tags.length = 0;
-  });
+    jest.clearAllMocks()
+  })
 
-  describe('create', () => {
-    it('应该成功创建标签', async () => {
-      const createData: CreateTagDTO = {
-        name: '测试标签',
-        description: '这是一个测试标签',
-        color: '#FF0000',
-      };
+  describe('createTag', () => {
+    const mockTagData = {
+      name: 'Test Tag',
+    }
 
-      const tag = await tagService.create(createData);
+    const mockCreatedTag = {
+      id: '1',
+      name: mockTagData.name,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
 
-      expect(tag).toEqual(expect.objectContaining({
-        ...createData,
-        isEnabled: true,
-        id: expect.any(String),
-        createdAt: expect.any(Date),
-        updatedAt: expect.any(Date),
-      }));
-    });
+    it('应该正确创建标签', async () => {
+      mockPrisma.tag.create.mockResolvedValue(mockCreatedTag)
 
-    it('应该使用提供的启用状态', async () => {
-      const createData: CreateTagDTO = {
-        name: '测试标签',
-        isEnabled: false,
-      };
+      const result = await TagService.createTag(mockTagData)
 
-      const tag = await tagService.create(createData);
+      expect(mockPrisma.tag.create).toHaveBeenCalledWith({
+        data: mockTagData,
+      })
+      expect(result).toEqual(mockCreatedTag)
+    })
 
-      expect(tag.isEnabled).toBe(false);
-    });
-  });
+    it('应该处理创建错误', async () => {
+      mockPrisma.tag.create.mockRejectedValue(new Error('Database error'))
 
-  describe('update', () => {
-    it('应该成功更新标签', async () => {
-      const tag = await tagService.create({ name: '原始标签' });
-      const updateData: UpdateTagDTO = {
-        name: '更新后的标签',
-        description: '更新后的描述',
-        color: '#00FF00',
-      };
+      await expect(TagService.createTag(mockTagData)).rejects.toThrow('Database error')
+    })
+  })
 
-      const updatedTag = await tagService.update(tag.id, updateData);
+  describe('updateTag', () => {
+    const mockUpdateData = {
+      name: 'Updated Tag',
+    }
 
-      expect(updatedTag).toEqual(expect.objectContaining({
-        id: tag.id,
-        name: updateData.name,
-        description: updateData.description,
-        color: updateData.color,
-        isEnabled: tag.isEnabled,
-        createdAt: tag.createdAt,
-        updatedAt: expect.any(Date),
-      }));
+    const mockUpdatedTag = {
+      id: '1',
+      name: mockUpdateData.name,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
 
-      expect(updatedTag?.updatedAt.getTime()).toBeGreaterThan(tag.updatedAt.getTime());
-    });
+    it('应该正确更新标签', async () => {
+      mockPrisma.tag.update.mockResolvedValue(mockUpdatedTag)
 
-    it('更新不存在的标签应该返回null', async () => {
-      const result = await tagService.update('不存在的ID', { name: '测试' });
-      expect(result).toBeNull();
-    });
-  });
+      const result = await TagService.updateTag('1', mockUpdateData)
 
-  describe('delete', () => {
-    it('应该成功删除标签', async () => {
-      const tag = await tagService.create({ name: '待删除标签' });
-      
-      const deletedTag = await tagService.delete(tag.id);
-      const findResult = await tagService.findById(tag.id);
+      expect(mockPrisma.tag.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: mockUpdateData,
+      })
+      expect(result).toEqual(mockUpdatedTag)
+    })
 
-      expect(deletedTag).toEqual(tag);
-      expect(findResult).toBeNull();
-    });
+    it('应该处理更新错误', async () => {
+      mockPrisma.tag.update.mockRejectedValue(new Error('Update failed'))
 
-    it('删除不存在的标签应该返回null', async () => {
-      const result = await tagService.delete('不存在的ID');
-      expect(result).toBeNull();
-    });
-  });
+      await expect(TagService.updateTag('1', mockUpdateData)).rejects.toThrow('Update failed')
+    })
+  })
 
-  describe('findAll', () => {
-    it('应该按照创建时间倒序返回所有标签', async () => {
-      // 创建测试数据时增加延迟，确保创建时间不同
-      const tag1 = await tagService.create({ name: '标签1' });
-      await new Promise(resolve => setTimeout(resolve, 10));
-      const tag2 = await tagService.create({ name: '标签2' });
-      await new Promise(resolve => setTimeout(resolve, 10));
-      const tag3 = await tagService.create({ name: '标签3' });
+  describe('deleteTag', () => {
+    const mockTag = {
+      id: '1',
+      name: 'Test Tag',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
 
-      const tags = await tagService.findAll();
+    it('应该正确删除标签', async () => {
+      mockPrisma.tag.delete.mockResolvedValue(mockTag)
 
-      expect(tags).toHaveLength(3);
-      expect(tags[0].id).toBe(tag3.id);
-      expect(tags[1].id).toBe(tag2.id);
-      expect(tags[2].id).toBe(tag1.id);
-    });
-  });
+      const result = await TagService.deleteTag('1')
 
-  describe('findById', () => {
-    it('应该返回指定ID的标签', async () => {
-      const tag = await tagService.create({ name: '测试标签' });
-      
-      const foundTag = await tagService.findById(tag.id);
-      
-      expect(foundTag).toEqual(tag);
-    });
+      expect(mockPrisma.tag.delete).toHaveBeenCalledWith({
+        where: { id: '1' },
+      })
+      expect(result).toEqual(mockTag)
+    })
 
-    it('查找不存在的标签应该返回null', async () => {
-      const result = await tagService.findById('不存在的ID');
-      expect(result).toBeNull();
-    });
-  });
+    it('应该处理删除错误', async () => {
+      mockPrisma.tag.delete.mockRejectedValue(new Error('Delete failed'))
 
-  describe('searchByName', () => {
-    it('应该返回名称包含搜索关键词的标签', async () => {
-      await tagService.create({ name: '前端开发' });
-      await tagService.create({ name: '后端开发' });
-      await tagService.create({ name: '开发工具' });
+      await expect(TagService.deleteTag('1')).rejects.toThrow('Delete failed')
+    })
+  })
 
-      const results = await tagService.searchByName('前端');
+  describe('getTags', () => {
+    const mockTags = [
+      {
+        id: '1',
+        name: 'Tag 1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: '2',
+        name: 'Tag 2',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]
 
-      expect(results).toHaveLength(1);
-      expect(results[0].name).toBe('前端开发');
-    });
+    it('应该获取标签列表和总数', async () => {
+      mockPrisma.tag.findMany.mockResolvedValue(mockTags)
+      mockPrisma.tag.count.mockResolvedValue(2)
 
-    it('搜索应该忽略大小写', async () => {
-      await tagService.create({ name: 'JavaScript' });
-      await tagService.create({ name: 'TypeScript' });
+      const result = await TagService.getTags()
 
-      const results = await tagService.searchByName('script');
+      expect(mockPrisma.tag.findMany).toHaveBeenCalledWith({
+        where: undefined,
+        skip: 0,
+        take: 10,
+        orderBy: {
+          name: 'asc',
+        },
+      })
+      expect(mockPrisma.tag.count).toHaveBeenCalledWith({ where: undefined })
+      expect(result).toEqual({
+        tags: mockTags,
+        total: 2,
+      })
+    })
 
-      expect(results).toHaveLength(2);
-      expect(results.map(tag => tag.name)).toEqual(
-        expect.arrayContaining(['JavaScript', 'TypeScript'])
-      );
-    });
+    it('应该使用搜索参数过滤标签', async () => {
+      const queryParams = {
+        searchQuery: 'test',
+        page: 2,
+        limit: 5,
+      }
 
-    it('没有匹配结果时应该返回空数组', async () => {
-      await tagService.create({ name: '测试标签' });
+      mockPrisma.tag.findMany.mockResolvedValue(mockTags)
+      mockPrisma.tag.count.mockResolvedValue(2)
 
-      const results = await tagService.searchByName('不存在');
+      await TagService.getTags(queryParams)
 
-      expect(results).toHaveLength(0);
-    });
-  });
-}); 
+      const expectedWhere = {
+        name: {
+          contains: 'test',
+        },
+      }
+
+      expect(mockPrisma.tag.findMany).toHaveBeenCalledWith({
+        where: expectedWhere,
+        skip: 5,
+        take: 5,
+        orderBy: {
+          name: 'asc',
+        },
+      })
+      expect(mockPrisma.tag.count).toHaveBeenCalledWith({
+        where: expectedWhere,
+      })
+    })
+  })
+
+  describe('getTag', () => {
+    const mockTag = {
+      id: '1',
+      name: 'Test Tag',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    it('应该通过ID获取标签', async () => {
+      mockPrisma.tag.findUnique.mockResolvedValue(mockTag)
+
+      const result = await TagService.getTag('1')
+
+      expect(mockPrisma.tag.findUnique).toHaveBeenCalledWith({
+        where: { id: '1' },
+      })
+      expect(result).toEqual(mockTag)
+    })
+
+    it('当标签不存在时应该返回null', async () => {
+      mockPrisma.tag.findUnique.mockResolvedValue(null)
+
+      const result = await TagService.getTag('999')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('getTagByName', () => {
+    const mockTag = {
+      id: '1',
+      name: 'Test Tag',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    it('应该通过名称获取标签', async () => {
+      mockPrisma.tag.findUnique.mockResolvedValue(mockTag)
+
+      const result = await TagService.getTagByName('Test Tag')
+
+      expect(mockPrisma.tag.findUnique).toHaveBeenCalledWith({
+        where: { name: 'Test Tag' },
+      })
+      expect(result).toEqual(mockTag)
+    })
+
+    it('当标签不存在时应该返回null', async () => {
+      mockPrisma.tag.findUnique.mockResolvedValue(null)
+
+      const result = await TagService.getTagByName('Nonexistent Tag')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('getArticleTags', () => {
+    const mockTagsOnArticles = [
+      {
+        articleId: '1',
+        tagId: '1',
+        tag: {
+          id: '1',
+          name: 'Tag 1',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      },
+      {
+        articleId: '1',
+        tagId: '2',
+        tag: {
+          id: '2',
+          name: 'Tag 2',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      },
+    ]
+
+    it('应该获取文章的所有标签', async () => {
+      mockPrisma.tagsOnArticles.findMany.mockResolvedValue(mockTagsOnArticles)
+
+      const result = await TagService.getArticleTags('1')
+
+      expect(mockPrisma.tagsOnArticles.findMany).toHaveBeenCalledWith({
+        where: { articleId: '1' },
+        include: {
+          tag: true,
+        },
+      })
+      expect(result).toEqual(mockTagsOnArticles.map(item => item.tag))
+    })
+
+    it('当文章没有标签时应该返回空数组', async () => {
+      mockPrisma.tagsOnArticles.findMany.mockResolvedValue([])
+
+      const result = await TagService.getArticleTags('1')
+
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('getPopularTags', () => {
+    const mockTags = [
+      {
+        id: '1',
+        name: 'Popular Tag 1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: {
+          articles: 10,
+        },
+      },
+      {
+        id: '2',
+        name: 'Popular Tag 2',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: {
+          articles: 8,
+        },
+      },
+    ]
+
+    it('应该获取热门标签列表', async () => {
+      mockPrisma.tag.findMany.mockResolvedValue(mockTags)
+
+      const result = await TagService.getPopularTags(5)
+
+      expect(mockPrisma.tag.findMany).toHaveBeenCalledWith({
+        include: {
+          _count: {
+            select: {
+              articles: true,
+            },
+          },
+        },
+        orderBy: {
+          articles: {
+            _count: 'desc',
+          },
+        },
+        take: 5,
+      })
+      expect(result).toEqual(
+        mockTags.map(tag => ({
+          tag,
+          articleCount: tag._count.articles,
+        }))
+      )
+    })
+
+    it('应该使用默认限制获取热门标签', async () => {
+      mockPrisma.tag.findMany.mockResolvedValue(mockTags)
+
+      await TagService.getPopularTags()
+
+      expect(mockPrisma.tag.findMany).toHaveBeenCalledWith({
+        include: {
+          _count: {
+            select: {
+              articles: true,
+            },
+          },
+        },
+        orderBy: {
+          articles: {
+            _count: 'desc',
+          },
+        },
+        take: 10,
+      })
+    })
+  })
+}) 

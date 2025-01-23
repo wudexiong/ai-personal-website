@@ -1,406 +1,386 @@
-import { NextRequest } from 'next/server';
-import { POST, GET } from '../route';
-import { GET as getArticle, PUT, DELETE } from '../[id]/route';
-import { articleService } from '@/services/articleService';
-import { CreateArticleInput } from '@/types/article';
+/**
+ * 文章API测试
+ * @jest-environment node
+ */
 
-// 模拟请求数据
-const mockArticleInput: CreateArticleInput = {
-  title: '测试文章',
-  content: '这是一篇测试文章的内容',
-  summary: '测试文章摘要',
-  tags: ['测试', '标签'],
-  category: '测试分类',
-  status: 'draft',
-  author: {
-    id: 'test-author-id',
-    name: '测试作者'
-  }
-};
+import { ArticleService } from '@/services/articleService'
+import { NextRequest } from 'next/server'
+import { POST, GET } from '../route'
+import { GET as GET_BY_ID, PUT, DELETE } from '../[id]/route'
 
 describe('Articles API', () => {
-  // 在所有测试前禁用控制台错误输出
-  const originalError = console.error;
-  beforeAll(() => {
-    console.error = jest.fn();
-  });
-
-  // 在所有测试后恢复控制台错误输出
-  afterAll(() => {
-    console.error = originalError;
-  });
-
   beforeEach(() => {
-    // @ts-ignore - 访问私有属性用于测试
-    articleService.articles = [];
-    // 清除 console.error 的调用记录
-    (console.error as jest.Mock).mockClear();
-  });
+    jest.clearAllMocks()
+    jest.spyOn(ArticleService, 'createArticle').mockImplementation(jest.fn())
+    jest.spyOn(ArticleService, 'getArticles').mockImplementation(jest.fn())
+    jest.spyOn(ArticleService, 'getArticle').mockImplementation(jest.fn())
+    jest.spyOn(ArticleService, 'updateArticle').mockImplementation(jest.fn())
+    jest.spyOn(ArticleService, 'deleteArticle').mockImplementation(jest.fn())
+  })
 
   describe('POST /api/articles', () => {
     it('应该成功创建文章', async () => {
+      const mockArticle = {
+        title: '测试文章',
+        content: '文章内容',
+        authorId: '1',
+        slug: 'test-article',
+        excerpt: '摘要',
+        coverImage: 'cover.jpg',
+        categoryId: '1',
+        tagIds: ['1', '2'],
+        published: false
+      }
+
+      ;(ArticleService.createArticle as jest.Mock).mockResolvedValueOnce({
+        id: '1',
+        ...mockArticle,
+      })
+
       const request = new NextRequest('http://localhost/api/articles', {
         method: 'POST',
-        body: JSON.stringify(mockArticleInput)
-      });
+        body: JSON.stringify(mockArticle),
+      })
 
-      const response = await POST(request);
-      expect(response.status).toBe(201);
-
-      const data = await response.json();
-      expect(data).toMatchObject({
-        ...mockArticleInput,
-        id: expect.any(String)
-      });
-    });
+      const response = await POST(request)
+      expect(response.status).toBe(201)
+      
+      const responseData = await response.json()
+      expect(responseData).toEqual({
+        id: '1',
+        ...mockArticle,
+      })
+    })
 
     it('当请求体为空时应该返回400错误', async () => {
       const request = new NextRequest('http://localhost/api/articles', {
-        method: 'POST'
-      });
+        method: 'POST',
+      })
 
-      const response = await POST(request);
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to create article' });
-    });
+      const response = await POST(request)
+      expect(response.status).toBe(400)
+    })
 
     it('当请求体格式错误时应该返回400错误', async () => {
       const request = new NextRequest('http://localhost/api/articles', {
         method: 'POST',
-        body: '{invalid json'
-      });
+        body: 'invalid json',
+      })
 
-      const response = await POST(request);
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to create article' });
-    });
+      const response = await POST(request)
+      expect(response.status).toBe(400)
+    })
 
     it('当缺少必填字段时应该返回400错误', async () => {
-      const invalidInput = {
-        title: '测试文章'
-        // 缺少其他必填字段
-      };
-
       const request = new NextRequest('http://localhost/api/articles', {
         method: 'POST',
-        body: JSON.stringify(invalidInput)
-      });
+        body: JSON.stringify({}),
+      })
 
-      const response = await POST(request);
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to create article' });
-    });
+      const response = await POST(request)
+      expect(response.status).toBe(400)
+    })
 
     it('当请求体包含无效的字段类型时应该返回400错误', async () => {
-      const invalidInput = {
-        ...mockArticleInput,
-        title: 123, // 应该是字符串
-      };
-
       const request = new NextRequest('http://localhost/api/articles', {
         method: 'POST',
-        body: JSON.stringify(invalidInput)
-      });
+        body: JSON.stringify({
+          title: 123, // 应该是字符串
+          content: '内容',
+          authorId: '1',
+          slug: 'test'
+        }),
+      })
 
-      const response = await POST(request);
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to create article' });
-    });
+      const response = await POST(request)
+      expect(response.status).toBe(400)
+    })
 
     it('当请求体包含无效的标签类型时应该返回400错误', async () => {
-      const invalidInput = {
-        ...mockArticleInput,
-        tags: 'not-an-array'
-      };
-
       const request = new NextRequest('http://localhost/api/articles', {
         method: 'POST',
-        body: JSON.stringify(invalidInput)
-      });
+        body: JSON.stringify({
+          title: '标题',
+          content: '内容',
+          authorId: '1',
+          slug: 'test',
+          tagIds: 'invalid-tags', // 应该是数组
+        }),
+      })
 
-      const response = await POST(request);
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to create article' });
-    });
+      const response = await POST(request)
+      expect(response.status).toBe(400)
+    })
 
     it('当请求体包含无效的状态值时应该返回400错误', async () => {
-      const invalidInput = {
-        ...mockArticleInput,
-        status: 'invalid-status'
-      };
-
       const request = new NextRequest('http://localhost/api/articles', {
         method: 'POST',
-        body: JSON.stringify(invalidInput)
-      });
+        body: JSON.stringify({
+          title: '标题',
+          content: '内容',
+          authorId: '1',
+          slug: 'test',
+          published: 'invalid', // 应该是布尔值
+        }),
+      })
 
-      const response = await POST(request);
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to create article' });
-    });
-  });
+      const response = await POST(request)
+      expect(response.status).toBe(400)
+    })
+  })
 
   describe('GET /api/articles', () => {
-    beforeEach(async () => {
-      // 创建测试文章
-      await articleService.createArticle({
-        ...mockArticleInput,
-        category: '分类A',
-        status: 'published'
-      });
-      await articleService.createArticle({
-        ...mockArticleInput,
-        category: '分类B',
-        status: 'draft'
-      });
-    });
-
     it('应该返回所有文章', async () => {
-      const request = new NextRequest('http://localhost/api/articles');
-      const response = await GET(request);
-      expect(response.status).toBe(200);
+      const mockArticles = [
+        {
+          id: '1',
+          title: '文章1',
+          content: '内容1',
+        },
+        {
+          id: '2',
+          title: '文章2',
+          content: '内容2',
+        },
+      ]
 
-      const data = await response.json();
-      expect(data).toHaveLength(2);
-    });
+      ;(ArticleService.getArticles as jest.Mock).mockResolvedValueOnce(mockArticles)
+
+      const request = new NextRequest('http://localhost/api/articles')
+      const response = await GET(request)
+      
+      expect(response.status).toBe(200)
+      const responseData = await response.json()
+      expect(responseData).toEqual(mockArticles)
+    })
 
     it('应该支持按分类筛选', async () => {
-      const request = new NextRequest('http://localhost/api/articles?category=分类A');
-      const response = await GET(request);
-      const data = await response.json();
+      const mockArticles = [
+        {
+          id: '1',
+          title: '文章1',
+          categoryId: '1',
+        },
+      ]
 
-      expect(data).toHaveLength(1);
-      expect(data[0].category).toBe('分类A');
-    });
+      ;(ArticleService.getArticles as jest.Mock).mockResolvedValueOnce(mockArticles)
+
+      const request = new NextRequest('http://localhost/api/articles?categoryId=1')
+      const response = await GET(request)
+      
+      expect(response.status).toBe(200)
+      const responseData = await response.json()
+      expect(responseData).toEqual(mockArticles)
+      expect(ArticleService.getArticles).toHaveBeenCalledWith(expect.objectContaining({
+        categoryId: '1',
+      }))
+    })
 
     it('应该支持按状态筛选', async () => {
-      const request = new NextRequest('http://localhost/api/articles?status=published');
-      const response = await GET(request);
-      const data = await response.json();
+      const mockArticles = [
+        {
+          id: '1',
+          title: '文章1',
+          published: true,
+        },
+      ]
 
-      expect(data).toHaveLength(1);
-      expect(data[0].status).toBe('published');
-    });
+      ;(ArticleService.getArticles as jest.Mock).mockResolvedValueOnce(mockArticles)
+
+      const request = new NextRequest('http://localhost/api/articles?published=true')
+      const response = await GET(request)
+      
+      expect(response.status).toBe(200)
+      const responseData = await response.json()
+      expect(responseData).toEqual(mockArticles)
+      expect(ArticleService.getArticles).toHaveBeenCalledWith(expect.objectContaining({
+        published: true,
+      }))
+    })
 
     it('应该处理无效的标签格式', async () => {
-      const request = new NextRequest('http://localhost/api/articles?tags=');
-      const response = await GET(request);
-      expect(response.status).toBe(200);
-      
-      const data = await response.json();
-      expect(Array.isArray(data)).toBe(true);
-    });
+      const request = new NextRequest('http://localhost/api/articles?tags=invalid@tags')
+      const response = await GET(request)
+      expect(response.status).toBe(400)
+    })
 
     it('应该处理无效的状态值', async () => {
-      const request = new NextRequest('http://localhost/api/articles?status=invalid');
-      const response = await GET(request);
-      expect(response.status).toBe(200);
-      
-      const data = await response.json();
-      expect(Array.isArray(data)).toBe(true);
-    });
-  });
+      const request = new NextRequest('http://localhost/api/articles?status=invalid-status')
+      const response = await GET(request)
+      expect(response.status).toBe(400)
+    })
+  })
 
   describe('GET /api/articles/[id]', () => {
     it('应该返回指定ID的文章', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
-      const request = new NextRequest(`http://localhost/api/articles/${article.id}`);
-      const response = await getArticle(request, { params: { id: article.id } });
+      const mockArticle = {
+        id: '1',
+        title: '文章1',
+        content: '内容1',
+      }
+
+      ;(ArticleService.getArticle as jest.Mock).mockResolvedValueOnce(mockArticle)
+
+      const request = new NextRequest('http://localhost/api/articles/1')
+      const response = await GET_BY_ID(request, { params: { id: '1' } })
       
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data).toMatchObject(mockArticleInput);
-    });
+      expect(response.status).toBe(200)
+      const responseData = await response.json()
+      expect(responseData).toEqual(mockArticle)
+    })
 
     it('当文章不存在时应该返回404', async () => {
-      const request = new NextRequest('http://localhost/api/articles/non-existent-id');
-      const response = await getArticle(request, { params: { id: 'non-existent-id' } });
+      ;(ArticleService.getArticle as jest.Mock).mockResolvedValueOnce(null)
+
+      const request = new NextRequest('http://localhost/api/articles/999')
+      const response = await GET_BY_ID(request, { params: { id: '999' } })
       
-      expect(response.status).toBe(404);
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Article not found' });
-    });
+      expect(response.status).toBe(404)
+    })
 
     it('当ID格式无效时应该返回400错误', async () => {
-      const request = new NextRequest('http://localhost/api/articles/invalid-uuid-format');
-      const response = await getArticle(request, { params: { id: 'invalid-uuid-format' } });
+      const request = new NextRequest('http://localhost/api/articles/invalid-id')
+      const response = await GET_BY_ID(request, { params: { id: 'invalid-id' } })
       
-      expect(response.status).toBe(404);
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Article not found' });
-    });
-  });
+      expect(response.status).toBe(400)
+    })
+  })
 
   describe('PUT /api/articles/[id]', () => {
     it('应该成功更新文章', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
-      const updateData = {
+      const mockArticle = {
         title: '更新后的标题',
-        content: '更新后的内容'
-      };
+        content: '更新后的内容',
+        slug: 'updated-article',
+        excerpt: '更新后的摘要',
+        coverImage: 'new-cover.jpg',
+        categoryId: '2',
+        tagIds: ['3', '4'],
+        published: true
+      }
 
-      const request = new NextRequest(`http://localhost/api/articles/${article.id}`, {
+      ;(ArticleService.updateArticle as jest.Mock).mockResolvedValueOnce({
+        id: '1',
+        ...mockArticle,
+      })
+
+      const request = new NextRequest('http://localhost/api/articles/1', {
         method: 'PUT',
-        body: JSON.stringify(updateData)
-      });
+        body: JSON.stringify(mockArticle),
+      })
 
-      const response = await PUT(request, { params: { id: article.id } });
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data).toMatchObject({
-        ...mockArticleInput,
-        ...updateData
-      });
-    });
+      const response = await PUT(request, { params: { id: '1' } })
+      expect(response.status).toBe(200)
+      
+      const responseData = await response.json()
+      expect(responseData).toEqual({
+        id: '1',
+        ...mockArticle,
+      })
+    })
 
     it('当请求体为空时应该返回400错误', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
-      const request = new NextRequest(`http://localhost/api/articles/${article.id}`, {
-        method: 'PUT'
-      });
+      const request = new NextRequest('http://localhost/api/articles/1', {
+        method: 'PUT',
+      })
 
-      const response = await PUT(request, { params: { id: article.id } });
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to update article' });
-    });
+      const response = await PUT(request, { params: { id: '1' } })
+      expect(response.status).toBe(400)
+    })
 
     it('当请求体格式错误时应该返回400错误', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
-      const request = new NextRequest(`http://localhost/api/articles/${article.id}`, {
+      const request = new NextRequest('http://localhost/api/articles/1', {
         method: 'PUT',
-        body: '{invalid json'
-      });
+        body: 'invalid json',
+      })
 
-      const response = await PUT(request, { params: { id: article.id } });
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to update article' });
-    });
+      const response = await PUT(request, { params: { id: '1' } })
+      expect(response.status).toBe(400)
+    })
 
     it('当文章不存在时应该返回404', async () => {
-      const request = new NextRequest('http://localhost/api/articles/non-existent-id', {
-        method: 'PUT',
-        body: JSON.stringify({ title: '更新后的标题' })
-      });
+      ;(ArticleService.updateArticle as jest.Mock).mockResolvedValueOnce(null)
 
-      const response = await PUT(request, { params: { id: 'non-existent-id' } });
-      expect(response.status).toBe(404);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Article not found' });
-    });
+      const request = new NextRequest('http://localhost/api/articles/999', {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: '更新后的标题',
+          content: '更新后的内容',
+          slug: 'updated-article'
+        }),
+      })
+
+      const response = await PUT(request, { params: { id: '999' } })
+      expect(response.status).toBe(404)
+    })
 
     it('当更新数据包含无效的字段类型时应该返回400错误', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
-      const invalidUpdate = {
-        title: 123, // 应该是字符串
-      };
-
-      const request = new NextRequest(`http://localhost/api/articles/${article.id}`, {
+      const request = new NextRequest('http://localhost/api/articles/1', {
         method: 'PUT',
-        body: JSON.stringify(invalidUpdate)
-      });
+        body: JSON.stringify({
+          title: 123, // 应该是字符串
+        }),
+      })
 
-      const response = await PUT(request, { params: { id: article.id } });
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to update article' });
-    });
+      const response = await PUT(request, { params: { id: '1' } })
+      expect(response.status).toBe(400)
+    })
 
     it('当更新数据包含未知字段时应该返回400错误', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
-      const invalidUpdate = {
-        unknownField: 'some value'
-      };
-
-      const request = new NextRequest(`http://localhost/api/articles/${article.id}`, {
+      const request = new NextRequest('http://localhost/api/articles/1', {
         method: 'PUT',
-        body: JSON.stringify(invalidUpdate)
-      });
+        body: JSON.stringify({
+          unknownField: 'value',
+        }),
+      })
 
-      const response = await PUT(request, { params: { id: article.id } });
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to update article' });
-    });
+      const response = await PUT(request, { params: { id: '1' } })
+      expect(response.status).toBe(400)
+    })
 
     it('当更新数据包含无效的作者信息时应该返回400错误', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
-      const invalidUpdate = {
-        author: {
-          // 缺少必需的字段
-          name: 'New Author'
-        }
-      };
-
-      const request = new NextRequest(`http://localhost/api/articles/${article.id}`, {
+      const request = new NextRequest('http://localhost/api/articles/1', {
         method: 'PUT',
-        body: JSON.stringify(invalidUpdate)
-      });
+        body: JSON.stringify({
+          authorId: 123, // 应该是字符串
+        }),
+      })
 
-      const response = await PUT(request, { params: { id: article.id } });
-      expect(response.status).toBe(400);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Failed to update article' });
-    });
-  });
+      const response = await PUT(request, { params: { id: '1' } })
+      expect(response.status).toBe(400)
+    })
+  })
 
   describe('DELETE /api/articles/[id]', () => {
     it('应该成功删除文章', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
-      const request = new NextRequest(`http://localhost/api/articles/${article.id}`, {
-        method: 'DELETE'
-      });
+      ;(ArticleService.deleteArticle as jest.Mock).mockResolvedValueOnce({ id: '1' })
 
-      const response = await DELETE(request, { params: { id: article.id } });
-      expect(response.status).toBe(204);
+      const request = new NextRequest('http://localhost/api/articles/1', {
+        method: 'DELETE',
+      })
 
-      // 验证文章已被删除
-      const deleted = await articleService.getArticle(article.id);
-      expect(deleted).toBeNull();
-    });
+      const response = await DELETE(request, { params: { id: '1' } })
+      expect(response.status).toBe(204)
+    })
 
     it('当文章不存在时应该返回404', async () => {
-      const request = new NextRequest('http://localhost/api/articles/non-existent-id', {
-        method: 'DELETE'
-      });
+      ;(ArticleService.deleteArticle as jest.Mock).mockResolvedValueOnce(null)
 
-      const response = await DELETE(request, { params: { id: 'non-existent-id' } });
-      expect(response.status).toBe(404);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Article not found' });
-    });
+      const request = new NextRequest('http://localhost/api/articles/999', {
+        method: 'DELETE',
+      })
 
-    it('当ID格式无效时应该返回404错误', async () => {
-      const request = new NextRequest('http://localhost/api/articles/invalid-uuid-format', {
-        method: 'DELETE'
-      });
+      const response = await DELETE(request, { params: { id: '999' } })
+      expect(response.status).toBe(404)
+    })
 
-      const response = await DELETE(request, { params: { id: 'invalid-uuid-format' } });
-      expect(response.status).toBe(404);
-      
-      const data = await response.json();
-      expect(data).toEqual({ error: 'Article not found' });
-    });
-  });
-}); 
+    it('当ID格式无效时应该返回400错误', async () => {
+      const request = new NextRequest('http://localhost/api/articles/invalid-id', {
+        method: 'DELETE',
+      })
+
+      const response = await DELETE(request, { params: { id: 'invalid-id' } })
+      expect(response.status).toBe(400)
+    })
+  })
+}) 

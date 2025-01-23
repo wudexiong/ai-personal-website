@@ -1,0 +1,147 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL") // uses connection pooling
+  directUrl = env("POSTGRES_URL_NON_POOLING") // uses a direct connection
+}
+
+// 用户模型
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String    // 加密存储
+  image         String?   // 头像URL
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  profile       Profile?
+  articles      Article[]
+  comments      Comment[]
+  likes         Like[]
+
+  @@index([email])
+}
+
+// 用户角色枚举
+enum Role {
+  USER
+  ADMIN
+}
+
+// 用户档案
+model Profile {
+  id          String   @id @default(cuid())
+  bio         String?  // 个人简介
+  location    String?  // 位置
+  website     String?  // 个人网站
+  github      String?  // GitHub账号
+  twitter     String?  // Twitter账号
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// 文章模型
+model Article {
+  id          String      @id @default(cuid())
+  title       String
+  content     String      @db.Text
+  published   Boolean     @default(false)
+  viewCount   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  authorId    String
+  author      User        @relation(fields: [authorId], references: [id])
+  categoryId  String?
+  category    Category?   @relation(fields: [categoryId], references: [id])
+  tags        TagsOnArticles[]
+  comments    Comment[]
+  likes       Like[]
+  slug        String      @unique // URL友好的标识符
+  excerpt     String?     // 文章摘要
+  coverImage  String?     // 封面图片URL
+
+  @@index([authorId])
+  @@index([categoryId])
+  @@index([slug])
+}
+
+// 分类模型
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  articles    Article[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([name])
+}
+
+// 标签模型
+model Tag {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  articles    TagsOnArticles[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([name])
+}
+
+// 文章-标签关联模型
+model TagsOnArticles {
+  articleId   String
+  tagId       String
+  article     Article   @relation(fields: [articleId], references: [id])
+  tag         Tag       @relation(fields: [tagId], references: [id])
+  assignedAt  DateTime  @default(now())
+
+  @@id([articleId, tagId])
+  @@index([articleId])
+  @@index([tagId])
+}
+
+// 评论模型
+model Comment {
+  id          String    @id @default(cuid())
+  content     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+  articleId   String
+  article     Article   @relation(fields: [articleId], references: [id])
+  parentId    String?   // 父评论ID，用于回复功能
+  parent      Comment?  @relation("CommentToComment", fields: [parentId], references: [id])
+  replies     Comment[] @relation("CommentToComment")
+
+  @@index([authorId])
+  @@index([articleId])
+  @@index([parentId])
+}
+
+// 点赞模型
+model Like {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  articleId   String
+  article     Article   @relation(fields: [articleId], references: [id])
+
+  @@unique([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+}

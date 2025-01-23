@@ -1,137 +1,505 @@
-import { articleService } from '../articleService';
-import { Article, CreateArticleInput } from '../../types/article';
+/**
+ * 文章服务单元测试
+ * @jest-environment node
+ */
+
+import { ArticleService } from '../articleService'
+import { prisma } from '@/lib/prisma'
+import type { Article } from '@prisma/client'
+
+// Mock Prisma
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    article: {
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      count: jest.fn(),
+    },
+    tagsOnArticles: {
+      deleteMany: jest.fn(),
+    },
+  },
+}))
 
 describe('ArticleService', () => {
-  // 在每个测试前清空文章列表
-  beforeEach(() => {
-    // @ts-ignore - 访问私有属性用于测试
-    articleService.articles = [];
-  });
+  const mockPrisma = prisma as jest.Mocked<typeof prisma>
 
-  // 测试数据
-  const mockArticleInput: CreateArticleInput = {
-    title: '测试文章',
-    content: '这是一篇测试文章的内容',
-    summary: '测试文章摘要',
-    tags: ['测试', '文章'],
-    category: '测试分类',
-    status: 'draft',
-    author: {
-      id: 'test-author-id',
-      name: '测试作者'
-    }
-  };
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
 
   describe('createArticle', () => {
-    it('应该成功创建文章', async () => {
-      const article = await articleService.createArticle(mockArticleInput);
+    const mockArticleData = {
+      title: 'Test Article',
+      content: 'Test content',
+      authorId: '1',
+      categoryId: '1',
+      tagIds: ['1', '2'],
+      published: true,
+      excerpt: 'Test excerpt',
+      coverImage: 'test.jpg',
+      slug: 'test-article',
+    }
 
-      expect(article).toMatchObject({
-        ...mockArticleInput,
-        id: expect.any(String),
-        createdAt: expect.any(Date),
-        updatedAt: expect.any(Date),
-      });
-    });
-  });
+    const mockCreatedArticle = {
+      id: '1',
+      title: mockArticleData.title,
+      content: mockArticleData.content,
+      authorId: mockArticleData.authorId,
+      categoryId: mockArticleData.categoryId,
+      published: mockArticleData.published,
+      excerpt: mockArticleData.excerpt,
+      coverImage: mockArticleData.coverImage,
+      slug: mockArticleData.slug,
+      viewCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      author: { id: '1', name: 'Test Author' },
+      category: { id: '1', name: 'Test Category' },
+      tags: [
+        { tagId: '1', articleId: '1', tag: { id: '1', name: 'Tag 1' } },
+        { tagId: '2', articleId: '1', tag: { id: '2', name: 'Tag 2' } },
+      ],
+    }
 
-  describe('getArticle', () => {
-    it('应该根据ID获取文章', async () => {
-      const created = await articleService.createArticle(mockArticleInput);
-      const article = await articleService.getArticle(created.id);
+    it('应该正确创建文章', async () => {
+      mockPrisma.article.create.mockResolvedValue(mockCreatedArticle)
 
-      expect(article).toEqual(created);
-    });
+      const result = await ArticleService.createArticle(mockArticleData)
 
-    it('当文章不存在时应该返回null', async () => {
-      const article = await articleService.getArticle('non-existent-id');
-      expect(article).toBeNull();
-    });
-  });
+      expect(mockPrisma.article.create).toHaveBeenCalledWith({
+        data: {
+          title: mockArticleData.title,
+          content: mockArticleData.content,
+          authorId: mockArticleData.authorId,
+          categoryId: mockArticleData.categoryId,
+          published: mockArticleData.published,
+          excerpt: mockArticleData.excerpt,
+          coverImage: mockArticleData.coverImage,
+          slug: mockArticleData.slug,
+          tags: {
+            create: mockArticleData.tagIds.map(tagId => ({
+              tag: {
+                connect: { id: tagId },
+              },
+            })),
+          },
+        },
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      })
+      expect(result).toEqual(mockCreatedArticle)
+    })
 
-  describe('listArticles', () => {
-    beforeEach(async () => {
-      // 创建多篇测试文章
-      await articleService.createArticle({
-        ...mockArticleInput,
-        category: '分类A',
-        tags: ['标签1', '标签2'],
-        status: 'published'
-      });
-      await articleService.createArticle({
-        ...mockArticleInput,
-        category: '分类B',
-        tags: ['标签2', '标签3'],
-        status: 'draft'
-      });
-    });
+    it('应该创建没有标签的文章', async () => {
+      const articleDataWithoutTags = {
+        ...mockArticleData,
+        tagIds: undefined,
+      }
 
-    it('应该返回所有文章', async () => {
-      const articles = await articleService.listArticles();
-      expect(articles).toHaveLength(2);
-    });
+      const articleWithoutTags = {
+        ...mockCreatedArticle,
+        tags: [],
+      }
 
-    it('应该根据分类筛选文章', async () => {
-      const articles = await articleService.listArticles({ category: '分类A' });
-      expect(articles).toHaveLength(1);
-      expect(articles[0].category).toBe('分类A');
-    });
+      mockPrisma.article.create.mockResolvedValue(articleWithoutTags)
 
-    it('应该根据标签筛选文章', async () => {
-      const articles = await articleService.listArticles({ tags: ['标签2'] });
-      expect(articles).toHaveLength(2);
-    });
+      const result = await ArticleService.createArticle(articleDataWithoutTags)
 
-    it('应该根据状态筛选文章', async () => {
-      const articles = await articleService.listArticles({ status: 'published' });
-      expect(articles).toHaveLength(1);
-      expect(articles[0].status).toBe('published');
-    });
-  });
+      expect(mockPrisma.article.create).toHaveBeenCalledWith({
+        data: {
+          title: articleDataWithoutTags.title,
+          content: articleDataWithoutTags.content,
+          authorId: articleDataWithoutTags.authorId,
+          categoryId: articleDataWithoutTags.categoryId,
+          published: articleDataWithoutTags.published,
+          excerpt: articleDataWithoutTags.excerpt,
+          coverImage: articleDataWithoutTags.coverImage,
+          slug: articleDataWithoutTags.slug,
+          tags: undefined,
+        },
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      })
+      expect(result).toEqual(articleWithoutTags)
+    })
+  })
 
   describe('updateArticle', () => {
-    it('应该成功更新文章', async () => {
-      const created = await articleService.createArticle(mockArticleInput);
-      
-      // 等待一毫秒以确保时间戳不同
-      await new Promise(resolve => setTimeout(resolve, 1));
-      
-      const updateData = {
-        title: '更新后的标题',
-        content: '更新后的内容'
-      };
+    const mockUpdateData = {
+      title: 'Updated Article',
+      content: 'Updated content',
+      tagIds: ['3', '4'],
+    }
 
-      const updated = await articleService.updateArticle(created.id, updateData);
+    const mockUpdatedArticle = {
+      id: '1',
+      title: mockUpdateData.title,
+      content: mockUpdateData.content,
+      authorId: '1',
+      categoryId: '1',
+      published: true,
+      excerpt: 'Test excerpt',
+      coverImage: 'test.jpg',
+      slug: 'test-article',
+      viewCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      author: { id: '1', name: 'Test Author' },
+      category: { id: '1', name: 'Test Category' },
+      tags: [
+        { tagId: '3', articleId: '1', tag: { id: '3', name: 'Tag 3' } },
+        { tagId: '4', articleId: '1', tag: { id: '4', name: 'Tag 4' } },
+      ],
+    }
 
-      expect(updated).toMatchObject({
-        ...created,
-        ...updateData,
-        updatedAt: expect.any(Date)
-      });
-      expect(updated?.updatedAt.getTime()).toBeGreaterThan(created.updatedAt.getTime());
-    });
+    it('应该正确更新文章', async () => {
+      mockPrisma.tagsOnArticles.deleteMany.mockResolvedValue({ count: 2 })
+      mockPrisma.article.update.mockResolvedValue(mockUpdatedArticle)
 
-    it('当文章不存在时应该返回null', async () => {
-      const updated = await articleService.updateArticle('non-existent-id', {
-        title: '更新后的标题'
-      });
-      expect(updated).toBeNull();
-    });
-  });
+      const result = await ArticleService.updateArticle('1', mockUpdateData)
+
+      expect(mockPrisma.tagsOnArticles.deleteMany).toHaveBeenCalledWith({
+        where: { articleId: '1' },
+      })
+      expect(mockPrisma.article.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: {
+          title: mockUpdateData.title,
+          content: mockUpdateData.content,
+          tags: {
+            create: mockUpdateData.tagIds.map(tagId => ({
+              tag: {
+                connect: { id: tagId },
+              },
+            })),
+          },
+        },
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      })
+      expect(result).toEqual(mockUpdatedArticle)
+    })
+
+    it('应该更新文章而不修改标签', async () => {
+      const updateDataWithoutTags = {
+        title: 'Updated Article',
+        content: 'Updated content',
+      }
+
+      mockPrisma.article.update.mockResolvedValue({
+        ...mockUpdatedArticle,
+        title: updateDataWithoutTags.title,
+        content: updateDataWithoutTags.content,
+      })
+
+      await ArticleService.updateArticle('1', updateDataWithoutTags)
+
+      expect(mockPrisma.tagsOnArticles.deleteMany).not.toHaveBeenCalled()
+      expect(mockPrisma.article.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: updateDataWithoutTags,
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      })
+    })
+  })
 
   describe('deleteArticle', () => {
-    it('应该成功删除文章', async () => {
-      const created = await articleService.createArticle(mockArticleInput);
-      const success = await articleService.deleteArticle(created.id);
-      expect(success).toBe(true);
+    const mockArticle = {
+      id: '1',
+      title: 'Test Article',
+      content: 'Test content',
+      authorId: '1',
+      categoryId: '1',
+      published: true,
+      excerpt: 'Test excerpt',
+      coverImage: 'test.jpg',
+      slug: 'test-article',
+      viewCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      author: { id: '1', name: 'Test Author' },
+      category: { id: '1', name: 'Test Category' },
+      tags: [],
+    }
 
-      const deleted = await articleService.getArticle(created.id);
-      expect(deleted).toBeNull();
-    });
+    it('应该正确删除文章', async () => {
+      mockPrisma.article.delete.mockResolvedValue(mockArticle)
 
-    it('当文章不存在时应该返回false', async () => {
-      const success = await articleService.deleteArticle('non-existent-id');
-      expect(success).toBe(false);
-    });
-  });
-}); 
+      const result = await ArticleService.deleteArticle('1')
+
+      expect(mockPrisma.article.delete).toHaveBeenCalledWith({
+        where: { id: '1' },
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      })
+      expect(result).toEqual(mockArticle)
+    })
+  })
+
+  describe('getArticles', () => {
+    const mockArticles = [
+      {
+        id: '1',
+        title: 'Article 1',
+        content: 'Content 1',
+        authorId: '1',
+        categoryId: '1',
+        published: true,
+        excerpt: 'Excerpt 1',
+        coverImage: 'image1.jpg',
+        slug: 'article-1',
+        viewCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        author: { id: '1', name: 'Author 1' },
+        category: { id: '1', name: 'Category 1' },
+        tags: [],
+      },
+      {
+        id: '2',
+        title: 'Article 2',
+        content: 'Content 2',
+        authorId: '1',
+        categoryId: '1',
+        published: true,
+        excerpt: 'Excerpt 2',
+        coverImage: 'image2.jpg',
+        slug: 'article-2',
+        viewCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        author: { id: '1', name: 'Author 1' },
+        category: { id: '1', name: 'Category 1' },
+        tags: [],
+      },
+    ]
+
+    it('应该获取文章列表和总数', async () => {
+      mockPrisma.article.findMany.mockResolvedValue(mockArticles)
+      mockPrisma.article.count.mockResolvedValue(2)
+
+      const result = await ArticleService.getArticles({})
+
+      expect(mockPrisma.article.findMany).toHaveBeenCalledWith({
+        where: {},
+        skip: 0,
+        take: 10,
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      })
+      expect(mockPrisma.article.count).toHaveBeenCalledWith({ where: {} })
+      expect(result).toEqual({
+        articles: mockArticles,
+        total: 2,
+      })
+    })
+
+    it('应该使用查询参数过滤文章', async () => {
+      const queryParams = {
+        categoryId: '1',
+        tagId: '1',
+        authorId: '1',
+        published: true,
+        searchQuery: 'test',
+        page: 2,
+        limit: 5,
+      }
+
+      mockPrisma.article.findMany.mockResolvedValue(mockArticles)
+      mockPrisma.article.count.mockResolvedValue(2)
+
+      await ArticleService.getArticles(queryParams)
+
+      const expectedWhere = {
+        categoryId: '1',
+        authorId: '1',
+        published: true,
+        tags: {
+          some: {
+            tagId: '1',
+          },
+        },
+        OR: [
+          { title: { contains: 'test' } },
+          { content: { contains: 'test' } },
+        ],
+      }
+
+      expect(mockPrisma.article.findMany).toHaveBeenCalledWith({
+        where: expectedWhere,
+        skip: 5,
+        take: 5,
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      })
+      expect(mockPrisma.article.count).toHaveBeenCalledWith({
+        where: expectedWhere,
+      })
+    })
+  })
+
+  describe('getArticle', () => {
+    const mockArticle = {
+      id: '1',
+      title: 'Test Article',
+      content: 'Test content',
+      authorId: '1',
+      categoryId: '1',
+      published: true,
+      excerpt: 'Test excerpt',
+      coverImage: 'test.jpg',
+      slug: 'test-article',
+      viewCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      author: { id: '1', name: 'Test Author' },
+      category: { id: '1', name: 'Test Category' },
+      tags: [],
+    }
+
+    it('应该通过ID获取文章', async () => {
+      mockPrisma.article.findUnique.mockResolvedValue(mockArticle)
+
+      const result = await ArticleService.getArticle({ id: '1' })
+
+      expect(mockPrisma.article.findUnique).toHaveBeenCalledWith({
+        where: { id: '1' },
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      })
+      expect(result).toEqual(mockArticle)
+    })
+
+    it('应该通过slug获取文章', async () => {
+      mockPrisma.article.findUnique.mockResolvedValue(mockArticle)
+
+      const result = await ArticleService.getArticle({ slug: 'test-article' })
+
+      expect(mockPrisma.article.findUnique).toHaveBeenCalledWith({
+        where: { slug: 'test-article' },
+        include: {
+          author: true,
+          category: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      })
+      expect(result).toEqual(mockArticle)
+    })
+
+    it('当没有提供id或slug时应该抛出错误', async () => {
+      await expect(ArticleService.getArticle({})).rejects.toThrow('必须提供id或slug')
+    })
+
+    it('当文章不存在时应该返回null', async () => {
+      mockPrisma.article.findUnique.mockResolvedValue(null)
+
+      const result = await ArticleService.getArticle({ id: '999' })
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('incrementViewCount', () => {
+    const mockArticle = {
+      id: '1',
+      title: 'Test Article',
+      content: 'Test content',
+      authorId: '1',
+      categoryId: '1',
+      published: true,
+      excerpt: 'Test excerpt',
+      coverImage: 'test.jpg',
+      slug: 'test-article',
+      viewCount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    it('应该增加文章浏览次数', async () => {
+      mockPrisma.article.update.mockResolvedValue(mockArticle)
+
+      const result = await ArticleService.incrementViewCount('1')
+
+      expect(mockPrisma.article.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: {
+          viewCount: {
+            increment: 1,
+          },
+        },
+      })
+      expect(result).toEqual(mockArticle)
+    })
+  })
+}) 

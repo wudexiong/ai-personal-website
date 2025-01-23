@@ -1,168 +1,379 @@
-import { categoryService } from '../categoryService';
-import { CreateCategoryDTO, UpdateCategoryDTO } from '@/types/category';
+/**
+ * 分类服务单元测试
+ * @jest-environment node
+ */
+
+import { CategoryService } from '../categoryService'
+import { prisma } from '@/lib/prisma'
+
+// Mock Prisma
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    category: {
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      count: jest.fn(),
+    },
+  },
+}))
 
 describe('CategoryService', () => {
+  const mockPrisma = prisma as jest.Mocked<typeof prisma>
+
   beforeEach(() => {
-    // 清空所有测试数据
-    const categories = (categoryService as any).categories;
-    categories.length = 0;
-  });
+    jest.clearAllMocks()
+  })
 
-  describe('create', () => {
-    it('应该成功创建分类', async () => {
-      const createData: CreateCategoryDTO = {
-        name: '测试分类',
-        description: '这是一个测试分类',
-      };
+  describe('createCategory', () => {
+    const mockCategoryData = {
+      name: 'Test Category',
+      description: 'Test description',
+    }
 
-      const category = await categoryService.create(createData);
+    const mockCreatedCategory = {
+      id: '1',
+      name: mockCategoryData.name,
+      description: mockCategoryData.description,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
 
-      expect(category).toEqual(expect.objectContaining({
-        ...createData,
-        isEnabled: true,
-        id: expect.any(String),
-        createdAt: expect.any(Date),
-        updatedAt: expect.any(Date),
-      }));
-    });
+    it('应该正确创建分类', async () => {
+      mockPrisma.category.create.mockResolvedValue(mockCreatedCategory)
 
-    it('应该使用提供的启用状态', async () => {
-      const createData: CreateCategoryDTO = {
-        name: '测试分类',
-        isEnabled: false,
-      };
+      const result = await CategoryService.createCategory(mockCategoryData)
 
-      const category = await categoryService.create(createData);
+      expect(mockPrisma.category.create).toHaveBeenCalledWith({
+        data: mockCategoryData,
+      })
+      expect(result).toEqual(mockCreatedCategory)
+    })
 
-      expect(category.isEnabled).toBe(false);
-    });
-  });
+    it('应该创建没有描述的分类', async () => {
+      const categoryDataWithoutDesc = {
+        name: mockCategoryData.name,
+      }
 
-  describe('update', () => {
-    it('应该成功更新分类', async () => {
-      const category = await categoryService.create({ name: '原始分类' });
-      const updateData: UpdateCategoryDTO = {
-        name: '更新后的分类',
-        description: '更新后的描述',
-      };
+      const categoryWithoutDesc = {
+        ...mockCreatedCategory,
+        description: null,
+      }
 
-      const updatedCategory = await categoryService.update(category.id, updateData);
+      mockPrisma.category.create.mockResolvedValue(categoryWithoutDesc)
 
-      expect(updatedCategory).toEqual(expect.objectContaining({
-        id: category.id,
-        name: updateData.name,
-        description: updateData.description,
-        isEnabled: category.isEnabled,
-        createdAt: category.createdAt,
-        updatedAt: expect.any(Date),
-      }));
+      const result = await CategoryService.createCategory(categoryDataWithoutDesc)
 
-      expect(updatedCategory?.updatedAt.getTime()).toBeGreaterThan(category.updatedAt.getTime());
-    });
+      expect(mockPrisma.category.create).toHaveBeenCalledWith({
+        data: categoryDataWithoutDesc,
+      })
+      expect(result).toEqual(categoryWithoutDesc)
+    })
 
-    it('更新不存在的分类应该返回null', async () => {
-      const result = await categoryService.update('不存在的ID', { name: '测试' });
-      expect(result).toBeNull();
-    });
-  });
+    it('应该处理创建错误', async () => {
+      mockPrisma.category.create.mockRejectedValue(new Error('Database error'))
 
-  describe('delete', () => {
-    it('应该成功删除分类', async () => {
-      const category = await categoryService.create({ name: '待删除分类' });
-      
-      const deletedCategory = await categoryService.delete(category.id);
-      const findResult = await categoryService.findById(category.id);
+      await expect(CategoryService.createCategory(mockCategoryData)).rejects.toThrow('Database error')
+    })
+  })
 
-      expect(deletedCategory).toEqual(category);
-      expect(findResult).toBeNull();
-    });
+  describe('updateCategory', () => {
+    const mockUpdateData = {
+      name: 'Updated Category',
+      description: 'Updated description',
+    }
 
-    it('删除不存在的分类应该返回null', async () => {
-      const result = await categoryService.delete('不存在的ID');
-      expect(result).toBeNull();
-    });
-  });
+    const mockUpdatedCategory = {
+      id: '1',
+      name: mockUpdateData.name,
+      description: mockUpdateData.description,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
 
-  describe('findAll', () => {
-    it('应该按照order和createdAt排序返回所有分类', async () => {
-      // 创建测试数据时增加延迟，确保创建时间不同
-      const category1 = await categoryService.create({ name: '分类1', order: 2 });
-      await new Promise(resolve => setTimeout(resolve, 10));
-      const category2 = await categoryService.create({ name: '分类2', order: 1 });
-      await new Promise(resolve => setTimeout(resolve, 10));
-      const category3 = await categoryService.create({ name: '分类3', order: 1 });
+    it('应该正确更新分类', async () => {
+      mockPrisma.category.update.mockResolvedValue(mockUpdatedCategory)
 
-      const categories = await categoryService.findAll();
+      const result = await CategoryService.updateCategory('1', mockUpdateData)
 
-      // 验证排序结果
-      expect(categories).toHaveLength(3);
-      // 验证 order 相同时按创建时间倒序排序
-      const order1Categories = categories.filter(c => c.order === 1);
-      expect(order1Categories).toHaveLength(2);
-      expect(order1Categories[0].createdAt.getTime()).toBeGreaterThan(order1Categories[1].createdAt.getTime());
-      // 验证 order 不同时按 order 升序排序
-      expect(categories.map(c => c.order)).toEqual([1, 1, 2]);
-    });
-  });
+      expect(mockPrisma.category.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: mockUpdateData,
+      })
+      expect(result).toEqual(mockUpdatedCategory)
+    })
 
-  describe('findById', () => {
-    it('应该返回指定ID的分类', async () => {
-      const category = await categoryService.create({ name: '测试分类' });
-      
-      const foundCategory = await categoryService.findById(category.id);
-      
-      expect(foundCategory).toEqual(category);
-    });
+    it('应该处理更新错误', async () => {
+      mockPrisma.category.update.mockRejectedValue(new Error('Update failed'))
 
-    it('查找不存在的分类应该返回null', async () => {
-      const result = await categoryService.findById('不存在的ID');
-      expect(result).toBeNull();
-    });
-  });
+      await expect(CategoryService.updateCategory('1', mockUpdateData)).rejects.toThrow('Update failed')
+    })
+  })
 
-  describe('getCategoryTree', () => {
-    it('应该返回正确的分类树结构', async () => {
-      // 创建测试数据时增加延迟，确保创建时间不同
-      const parent = await categoryService.create({ name: '父分类' });
-      await new Promise(resolve => setTimeout(resolve, 10));
-      const child1 = await categoryService.create({ 
-        name: '子分类1',
-        parentId: parent.id,
-      });
-      await new Promise(resolve => setTimeout(resolve, 10));
-      const child2 = await categoryService.create({
-        name: '子分类2',
-        parentId: parent.id,
-      });
-      await new Promise(resolve => setTimeout(resolve, 10));
-      const grandChild = await categoryService.create({
-        name: '孙分类',
-        parentId: child1.id,
-      });
+  describe('deleteCategory', () => {
+    const mockCategory = {
+      id: '1',
+      name: 'Test Category',
+      description: 'Test description',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
 
-      const tree = await categoryService.getCategoryTree();
+    it('应该正确删除分类', async () => {
+      mockPrisma.category.delete.mockResolvedValue(mockCategory)
 
-      expect(tree).toHaveLength(1);
-      expect(tree[0]).toEqual(expect.objectContaining({
-        id: parent.id,
-        name: parent.name,
-        children: expect.arrayContaining([
-          expect.objectContaining({
-            id: child1.id,
-            name: child1.name,
-            children: expect.arrayContaining([
-              expect.objectContaining({
-                id: grandChild.id,
-                name: grandChild.name,
-              })
-            ])
-          }),
-          expect.objectContaining({
-            id: child2.id,
-            name: child2.name,
-          })
-        ])
-      }));
-    });
-  });
-}); 
+      const result = await CategoryService.deleteCategory('1')
+
+      expect(mockPrisma.category.delete).toHaveBeenCalledWith({
+        where: { id: '1' },
+      })
+      expect(result).toEqual(mockCategory)
+    })
+
+    it('应该处理删除错误', async () => {
+      mockPrisma.category.delete.mockRejectedValue(new Error('Delete failed'))
+
+      await expect(CategoryService.deleteCategory('1')).rejects.toThrow('Delete failed')
+    })
+  })
+
+  describe('getCategories', () => {
+    const mockCategories = [
+      {
+        id: '1',
+        name: 'Category 1',
+        description: 'Description 1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: {
+          articles: 5,
+        },
+      },
+      {
+        id: '2',
+        name: 'Category 2',
+        description: 'Description 2',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: {
+          articles: 3,
+        },
+      },
+    ]
+
+    it('应该获取分类列表和总数', async () => {
+      mockPrisma.category.findMany.mockResolvedValue(mockCategories)
+      mockPrisma.category.count.mockResolvedValue(2)
+
+      const result = await CategoryService.getCategories()
+
+      expect(mockPrisma.category.findMany).toHaveBeenCalledWith({
+        where: undefined,
+        skip: 0,
+        take: 10,
+        orderBy: {
+          name: 'asc',
+        },
+        include: {
+          _count: {
+            select: {
+              articles: true,
+            },
+          },
+        },
+      })
+      expect(mockPrisma.category.count).toHaveBeenCalledWith({ where: undefined })
+      expect(result).toEqual({
+        categories: mockCategories.map(category => ({
+          ...category,
+          articleCount: category._count.articles,
+        })),
+        total: 2,
+      })
+    })
+
+    it('应该使用搜索参数过滤分类', async () => {
+      const queryParams = {
+        searchQuery: 'test',
+        page: 2,
+        limit: 5,
+      }
+
+      mockPrisma.category.findMany.mockResolvedValue(mockCategories)
+      mockPrisma.category.count.mockResolvedValue(2)
+
+      await CategoryService.getCategories(queryParams)
+
+      const expectedWhere = {
+        OR: [
+          { name: { contains: 'test' } },
+          { description: { contains: 'test' } },
+        ],
+      }
+
+      expect(mockPrisma.category.findMany).toHaveBeenCalledWith({
+        where: expectedWhere,
+        skip: 5,
+        take: 5,
+        orderBy: {
+          name: 'asc',
+        },
+        include: {
+          _count: {
+            select: {
+              articles: true,
+            },
+          },
+        },
+      })
+      expect(mockPrisma.category.count).toHaveBeenCalledWith({
+        where: expectedWhere,
+      })
+    })
+  })
+
+  describe('getCategory', () => {
+    const mockCategory = {
+      id: '1',
+      name: 'Test Category',
+      description: 'Test description',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      _count: {
+        articles: 5,
+      },
+    }
+
+    it('应该通过ID获取分类', async () => {
+      mockPrisma.category.findUnique.mockResolvedValue(mockCategory)
+
+      const result = await CategoryService.getCategory('1')
+
+      expect(mockPrisma.category.findUnique).toHaveBeenCalledWith({
+        where: { id: '1' },
+        include: {
+          _count: {
+            select: {
+              articles: true,
+            },
+          },
+        },
+      })
+      expect(result).toEqual(mockCategory)
+    })
+
+    it('当分类不存在时应该返回null', async () => {
+      mockPrisma.category.findUnique.mockResolvedValue(null)
+
+      const result = await CategoryService.getCategory('999')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('getCategoryByName', () => {
+    const mockCategory = {
+      id: '1',
+      name: 'Test Category',
+      description: 'Test description',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    it('应该通过名称获取分类', async () => {
+      mockPrisma.category.findUnique.mockResolvedValue(mockCategory)
+
+      const result = await CategoryService.getCategoryByName('Test Category')
+
+      expect(mockPrisma.category.findUnique).toHaveBeenCalledWith({
+        where: { name: 'Test Category' },
+      })
+      expect(result).toEqual(mockCategory)
+    })
+
+    it('当分类不存在时应该返回null', async () => {
+      mockPrisma.category.findUnique.mockResolvedValue(null)
+
+      const result = await CategoryService.getCategoryByName('Nonexistent Category')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('getPopularCategories', () => {
+    const mockCategories = [
+      {
+        id: '1',
+        name: 'Popular Category 1',
+        description: 'Description 1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: {
+          articles: 10,
+        },
+      },
+      {
+        id: '2',
+        name: 'Popular Category 2',
+        description: 'Description 2',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: {
+          articles: 8,
+        },
+      },
+    ]
+
+    it('应该获取热门分类列表', async () => {
+      mockPrisma.category.findMany.mockResolvedValue(mockCategories)
+
+      const result = await CategoryService.getPopularCategories(5)
+
+      expect(mockPrisma.category.findMany).toHaveBeenCalledWith({
+        include: {
+          _count: {
+            select: {
+              articles: true,
+            },
+          },
+        },
+        orderBy: {
+          articles: {
+            _count: 'desc',
+          },
+        },
+        take: 5,
+      })
+      expect(result).toEqual(
+        mockCategories.map(category => ({
+          category,
+          articleCount: category._count.articles,
+        }))
+      )
+    })
+
+    it('应该使用默认限制获取热门分类', async () => {
+      mockPrisma.category.findMany.mockResolvedValue(mockCategories)
+
+      await CategoryService.getPopularCategories()
+
+      expect(mockPrisma.category.findMany).toHaveBeenCalledWith({
+        include: {
+          _count: {
+            select: {
+              articles: true,
+            },
+          },
+        },
+        orderBy: {
+          articles: {
+            _count: 'desc',
+          },
+        },
+        take: 10,
+      })
+    })
+  })
+}) 

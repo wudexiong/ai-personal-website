@@ -1,132 +1,163 @@
-import { Category, CreateCategoryDTO, UpdateCategoryDTO } from '@/types/category';
-import { randomUUID } from 'crypto';
+import { prisma } from '@/lib/prisma';
+import type { Category } from '@prisma/client';
 
 /**
  * 分类服务类
+ * @description 提供分类相关的数据库操作方法
  */
-class CategoryService {
-  private categories: Category[] = [];
-
+export class CategoryService {
   /**
-   * 创建分类
-   * @param data - 创建分类的数据
-   * @returns 创建的分类
+   * 创建新分类
+   * @param data - 分类数据
+   * @returns 创建的分类对象
    */
-  async create(data: CreateCategoryDTO): Promise<Category> {
-    const category: Category = {
-      ...data,
-      id: randomUUID(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      isEnabled: data.isEnabled ?? true,
-    };
-    this.categories.push(category);
-    return category;
+  static async createCategory(data: {
+    name: string;
+    description?: string;
+  }): Promise<Category> {
+    return prisma.category.create({
+      data
+    });
   }
 
   /**
    * 更新分类
    * @param id - 分类ID
    * @param data - 更新的数据
-   * @returns 更新后的分类
+   * @returns 更新后的分类对象
    */
-  async update(id: string, data: UpdateCategoryDTO): Promise<Category | null> {
-    const index = this.categories.findIndex(category => category.id === id);
-    if (index === -1) return null;
-
-    // 确保更新时间晚于原始时间
-    await new Promise(resolve => setTimeout(resolve, 1));
-
-    const updatedCategory: Category = {
-      ...this.categories[index],
-      ...data,
-      updatedAt: new Date(),
-    };
-
-    this.categories[index] = updatedCategory;
-    return updatedCategory;
+  static async updateCategory(
+    id: string,
+    data: Partial<Omit<Category, 'id'>>
+  ): Promise<Category> {
+    return prisma.category.update({
+      where: { id },
+      data
+    });
   }
 
   /**
    * 删除分类
    * @param id - 分类ID
-   * @returns 删除的分类
+   * @returns 删除的分类对象
    */
-  async delete(id: string): Promise<Category | null> {
-    const index = this.categories.findIndex(category => category.id === id);
-    if (index === -1) return null;
-
-    const deletedCategory = this.categories[index];
-    this.categories.splice(index, 1);
-    return deletedCategory;
-  }
-
-  /**
-   * 获取分类列表
-   * @returns 分类列表
-   */
-  async findAll(): Promise<Category[]> {
-    // 创建一个新数组进行排序，避免修改原数组
-    const sortedCategories = [...this.categories];
-    
-    // 使用稳定排序
-    return sortedCategories.sort((a, b) => {
-      // 首先按照 order 排序（升序）
-      const orderA = a.order ?? 0;
-      const orderB = b.order ?? 0;
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-
-      // 如果 order 相同，按照创建时间倒序
-      return b.createdAt.getTime() - a.createdAt.getTime();
+  static async deleteCategory(id: string): Promise<Category> {
+    return prisma.category.delete({
+      where: { id }
     });
   }
 
   /**
-   * 根据ID获取分类
-   * @param id - 分类ID
-   * @returns 分类信息
+   * 获取分类列表
+   * @param params - 查询参数
+   * @returns 分类列表和总数
    */
-  async findById(id: string): Promise<Category | null> {
-    return this.categories.find(category => category.id === id) || null;
+  static async getCategories(params?: {
+    page?: number;
+    limit?: number;
+    searchQuery?: string;
+  }): Promise<{
+    categories: Category[];
+    total: number;
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      searchQuery
+    } = params || {};
+
+    const where = searchQuery ? {
+      OR: [
+        { name: { contains: searchQuery } },
+        { description: { contains: searchQuery } }
+      ]
+    } : undefined;
+
+    const [categories, total] = await Promise.all([
+      prisma.category.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: {
+          name: 'asc'
+        },
+        include: {
+          _count: {
+            select: {
+              articles: true
+            }
+          }
+        }
+      }),
+      prisma.category.count({ where })
+    ]);
+
+    return {
+      categories: categories.map(category => ({
+        ...category,
+        articleCount: category._count.articles
+      })),
+      total
+    };
   }
 
   /**
-   * 获取分类树结构
-   * @returns 分类树
+   * 获取单个分类
+   * @param id - 分类ID
+   * @returns 分类对象
    */
-  async getCategoryTree(): Promise<Category[]> {
-    // 获取所有分类并按照 order 和创建时间排序
-    const allCategories = await this.findAll();
-    
-    // 构建父子关系映射
-    const childrenMap = new Map<string | null, Category[]>();
-    
-    // 初始化根节点列表
-    childrenMap.set(null, []);
-    
-    // 遍历所有分类，建立父子关系映射
-    for (const category of allCategories) {
-      const parentId = category.parentId ?? null;
-      if (!childrenMap.has(parentId)) {
-        childrenMap.set(parentId, []);
+  static async getCategory(id: string): Promise<Category | null> {
+    return prisma.category.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            articles: true
+          }
+        }
       }
-      childrenMap.get(parentId)!.push(category);
-    }
-    
-    // 递归构建树结构
-    const buildTreeRecursive = (parentId: string | null): Category[] => {
-      const children = childrenMap.get(parentId) || [];
-      return children.map(category => ({
-        ...category,
-        children: childrenMap.has(category.id) ? buildTreeRecursive(category.id) : undefined
-      }));
-    };
-    
-    // 返回根节点的树结构
-    return buildTreeRecursive(null);
+    });
   }
-}
 
-export const categoryService = new CategoryService(); 
+  /**
+   * 根据名称获取分类
+   * @param name - 分类名称
+   * @returns 分类对象
+   */
+  static async getCategoryByName(name: string): Promise<Category | null> {
+    return prisma.category.findUnique({
+      where: { name }
+    });
+  }
+
+  /**
+   * 获取热门分类
+   * @param limit - 限制数量
+   * @returns 分类列表和文章数量
+   */
+  static async getPopularCategories(limit = 10): Promise<Array<{
+    category: Category;
+    articleCount: number;
+  }>> {
+    const categories = await prisma.category.findMany({
+      include: {
+        _count: {
+          select: {
+            articles: true
+          }
+        }
+      },
+      orderBy: {
+        articles: {
+          _count: 'desc'
+        }
+      },
+      take: limit
+    });
+
+    return categories.map(category => ({
+      category,
+      articleCount: category._count.articles
+    }));
+  }
+} 
