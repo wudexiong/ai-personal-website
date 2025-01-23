@@ -192,3 +192,5 @@ documentation:
       - "Response"
       - "Examples"
       - "Rate Limits" 
+
+依赖下载使用pnpm
