@@ -1,0 +1,194 @@
+# 项目基本配置
+version: "1.0"
+
+# 代码风格规则
+rules:
+  # 文件命名规则
+  file_naming:
+    pattern: "^[a-z][a-zA-Z0-9]*$"
+    description: "文件名应该使用小驼峰命名法"
+    exceptions:
+      - "README.md"
+      - "LICENSE"
+      - ".env*"
+
+  # 代码组织规则
+  code_organization:
+    max_folder_depth: 4
+    module_structure:
+      - "components"
+      - "hooks"
+      - "services"
+      - "utils"
+      - "types"
+      - "constants"
+      - "ai"
+      - "edge"
+      - "models"
+      
+  # 代码格式化规则
+  formatting:
+    indent: 2
+    max_line_length: 80
+    quotes: "single"
+    semi: true
+    trailing_comma: "es5"
+    
+  # 代码质量规则
+  code_quality:
+    max_function_length: 50
+    max_complexity: 10
+    max_params: 4
+    coverage_threshold: 80
+    
+  # AI编程规则
+  ai_programming:
+    # AI组件结构
+    component_structure:
+      - "core"          # AI核心能力
+      - "models"        # AI模型定义
+      - "hooks"         # AI相关hooks
+      - "utils"         # AI工具函数
+      - "types"         # AI类型定义
+      
+    # AI组件命名规则
+    naming_conventions:
+      component_prefix: "AI"
+      service_suffix: "Service"
+      hook_prefix: "useAI"
+      model_suffix: "Model"
+      
+    # AI模型配置规则
+    model_config:
+      required_fields:
+        - "modelName"      # 模型名称
+        - "version"        # 模型版本
+        - "provider"       # 模型提供商
+        - "capabilities"   # 模型能力描述
+        - "parameters"     # 模型参数
+        - "requirements"   # 资源需求
+      
+    # AI性能规则
+    performance:
+      max_inference_time: 2000     # ms
+      max_model_size: 500         # MB
+      max_memory_usage: 1024      # MB
+      max_concurrent_requests: 10
+      
+    # AI安全规则
+    security:
+      required_validations:
+        - "input_sanitization"    # 输入数据清洗
+        - "output_validation"     # 输出数据验证
+        - "privacy_check"         # 隐私数据检查
+        - "token_validation"      # Token验证
+      
+    # AI监控规则
+    monitoring:
+      metrics:
+        - "inference_time"        # 推理时间
+        - "memory_usage"         # 内存使用
+        - "error_rate"           # 错误率
+        - "request_count"        # 请求数
+        - "model_accuracy"       # 模型准确率
+        
+    # AI开发流程
+    development_workflow:
+      required_steps:
+        - "model_validation"      # 模型验证
+        - "performance_testing"   # 性能测试
+        - "security_audit"        # 安全审计
+        - "privacy_assessment"    # 隐私评估
+        
+    # 边缘计算规则
+    edge_computing:
+      max_bundle_size: 10        # MB
+      max_memory_usage: 256      # MB
+      offline_capabilities: true  # 离线能力支持
+      
+  # 性能规则
+  performance:
+    client_side:
+      max_bundle_size: 500       # KB
+      max_image_size: 1000       # KB
+      max_initial_load_time: 2000 # ms
+      max_tti: 3500              # ms (Time to Interactive)
+    server_side:
+      max_api_response_time: 200  # ms
+      max_database_query_time: 100 # ms
+    edge_side:
+      max_cold_start_time: 800   # ms
+      max_warm_start_time: 100   # ms
+      
+  # 安全规则
+  security:
+    authentication:
+      - "multi_factor"           # 多因素认证
+      - "biometric"              # 生物识别
+      - "behavioral"             # 行为认证
+    encryption:
+      - "end_to_end"            # 端到端加密
+      - "at_rest"               # 静态数据加密
+      - "in_transit"            # 传输加密
+    headers:
+      - "X-Content-Type-Options"
+      - "X-Frame-Options"
+      - "X-XSS-Protection"
+    sensitive_patterns:
+      - "password"
+      - "token"
+      - "key"
+      - "secret"
+      - "credential"
+
+# 忽略的文件和目录
+ignore:
+  - "node_modules"
+  - "dist"
+  - "*.test.js"
+  - "*.spec.js"
+  - "coverage"
+  - ".git"
+  - ".env*"
+  - "*.log"
+
+# 工具链配置
+toolchain:
+  build:
+    framework: "next"
+    bundler: "turbopack"
+  deployment:
+    platform: "vercel"
+    edge_function: true
+  development:
+    linter: "eslint"
+    formatter: "prettier"
+    test_framework: "jest"
+    e2e_testing: "cypress"
+    
+# 文档规则
+documentation:
+  required_files:
+    - "README.md"
+    - "CHANGELOG.md"
+    - "ARCHITECTURE.md"
+  ai_docs:
+    required_sections:
+      - "Model Description"
+      - "Capabilities"
+      - "Performance Metrics"
+      - "Privacy Considerations"
+      - "Integration Guide"
+  component_docs:
+    required_sections:
+      - "Description"
+      - "Props"
+      - "Examples"
+      - "Performance Notes"
+  api_docs:
+    required_sections:
+      - "Endpoint"
+      - "Parameters"
+      - "Response"
+      - "Examples"
+      - "Rate Limits" 
